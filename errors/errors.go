@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"net/http"
 	"strconv"
@@ -544,6 +546,69 @@ func ReasonForError(err error) StatusReason {
 		return status.Status().Reason
 	}
 	return StatusReasonUnknown
+}
+
+// ErrorToAPIStatus converts an error to an Status object.
+func ErrorToAPIStatus(err error) *Status {
+	switch t := err.(type) {
+	case interface{ Status() Status }:
+		status := t.Status()
+		if len(status.Status) == 0 {
+			status.Status = StatusFailure
+		}
+		switch status.Status {
+		case StatusSuccess:
+			if status.Code == 0 {
+				status.Code = http.StatusOK
+			}
+		case StatusFailure:
+			if status.Code == 0 {
+				status.Code = http.StatusInternalServerError
+			}
+		default:
+			runtime.HandleError(fmt.Errorf("apiserver received an error with wrong status field : %#+v", err))
+			if status.Code == 0 {
+				status.Code = http.StatusInternalServerError
+			}
+		}
+		return &status
+	default:
+		status := http.StatusInternalServerError
+		// Log errors that were not converted to an error status
+		// by REST storage - these typically indicate programmer
+		// error by not using pkg/api/errors, or unexpected failure
+		// cases.
+		return &Status{
+			Status:  StatusFailure,
+			Code:    int32(status),
+			Reason:  StatusReasonUnknown,
+			Message: err.Error(),
+		}
+	}
+}
+
+// FromResponse determines if the http.Response contains an error, if so, it
+// attempts to decode the error into a Status struct. If the decoding fails, an
+// internal error is returned
+func FromResponse(resp *http.Response) (err error, hasError bool) {
+	if resp.StatusCode > http.StatusOK && resp.StatusCode < http.StatusNoContent {
+		return nil, false
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return NewInternalError(fmt.Errorf("client error: reading server response: %w", err)), true
+	}
+	status := Status{}
+	err = json.Unmarshal(body, &status)
+	if err != nil {
+		return NewInternalError(fmt.Errorf("client error: unmarshalling server response: %w", err)), true
+	}
+	seconds, ok := retryAfterSeconds(resp)
+	if !ok {
+		seconds = 0
+	}
+	status.Details.RetryAfterSeconds = int32(seconds)
+	return &StatusError{ErrStatus: status}, true
 }
 
 // retryAfterSeconds returns the value of the Retry-After header and true, or 0 and false if
