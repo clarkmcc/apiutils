@@ -22,6 +22,23 @@ type Permission struct {
 	Verb      string
 }
 
+func (r Permission) String() string {
+	return strings.Join([]string{
+		r.Namespace,
+		r.Service,
+		r.Resource,
+		r.Verb,
+	}, ".")
+}
+
+// Returns this permission as a permission requirement
+func (r Permission) AsRequirement() PermissionRequirement {
+	if r.Verb == Wildcard {
+		panic(fmt.Sprintf("permission requirement '%s' cannot contain a wildcard", r))
+	}
+	return PermissionRequirement(r)
+}
+
 func ParsePermissionRequirementOrDie(in string) PermissionRequirement {
 	if strings.Contains(in, Wildcard) {
 		panic(fmt.Errorf("permission requirements cannot contain '%v' character", Wildcard))
@@ -61,15 +78,6 @@ func (r PermissionRequirement) FulfillsRequirement(p Permission) bool {
 
 func (r PermissionRequirement) String() string {
 	return Permission(r).String()
-}
-
-func (r Permission) String() string {
-	return strings.Join([]string{
-		r.Namespace,
-		r.Service,
-		r.Resource,
-		r.Verb,
-	}, ".")
 }
 
 type PermissionRequirementGroup []PermissionRequirement
