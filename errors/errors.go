@@ -591,7 +591,7 @@ func ErrorToAPIStatus(err error) *Status {
 // attempts to decode the error into a Status struct. If the decoding fails, an
 // internal error is returned
 func FromResponse(resp *http.Response) (err error, hasError bool) {
-	if resp.StatusCode > http.StatusOK && resp.StatusCode < http.StatusNoContent {
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode <= http.StatusNoContent {
 		return nil, false
 	}
 	body, err := ioutil.ReadAll(resp.Body)
