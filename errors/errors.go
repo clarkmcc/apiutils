@@ -604,10 +604,15 @@ func FromResponse(resp *http.Response) (err error, hasError bool) {
 		return NewInternalError(fmt.Errorf("client error: unmarshalling server response: %w", err)), true
 	}
 	seconds, ok := retryAfterSeconds(resp)
-	if !ok {
-		seconds = 0
+	if ok {
+		if status.Details == nil {
+			status.Details = &StatusDetails{
+				RetryAfterSeconds: int32(seconds),
+			}
+		} else {
+			status.Details.RetryAfterSeconds = int32(seconds)
+		}
 	}
-	status.Details.RetryAfterSeconds = int32(seconds)
 	return &StatusError{ErrStatus: status}, true
 }
 
